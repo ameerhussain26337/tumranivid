@@ -1,4 +1,5 @@
-﻿import type { Metadata } from "next";
+﻿
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -67,6 +68,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+	<head>
+  <script
+    async
+    src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6946299173054730"
+    crossOrigin="anonymous"
+  />
+ </head>
       <body className="min-h-screen flex flex-col">
         <div className="flex-1">{children}</div>
 
