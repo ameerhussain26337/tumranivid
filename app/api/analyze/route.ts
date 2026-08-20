@@ -120,6 +120,8 @@ export async function POST(request: Request) {
       );
     }
 
+    // YouTube uses its own information endpoint.
+    // Other supported platforms use the fetch endpoint.
     const endpoint =
       platform === "YouTube"
         ? "https://api.fastsaver.io/v1/youtube/info"
@@ -148,8 +150,16 @@ export async function POST(request: Request) {
       providerData = null;
     }
 
+    console.log(
+      "FastSaver ANALYZE response:",
+      providerData
+    );
+
     if (!providerResponse.ok || !providerData?.ok) {
-      console.error("FastSaver error:", providerData);
+      console.error(
+        "FastSaver error:",
+        providerData
+      );
 
       return NextResponse.json(
         {
@@ -185,16 +195,34 @@ export async function POST(request: Request) {
         data: {
           id: providerData.video_id ?? null,
           video_id: providerData.video_id ?? null,
-          title: providerData.title ?? null,
-          author: providerData.author ?? null,
-          author_url: providerData.author_url ?? null,
+
+          title:
+            providerData.title ??
+            providerData.name ??
+            null,
+
+          author:
+            providerData.author ??
+            providerData.channel ??
+            null,
+
+          author_url:
+            providerData.author_url ??
+            null,
+
           thumbnail:
             providerData.thumbnail ??
             providerData.thumbnails?.max ??
             providerData.thumbnails?.low ??
             null,
-          duration: providerData.duration ?? null,
-          formats: Array.isArray(providerData.formats)
+
+          duration:
+            providerData.duration ??
+            null,
+
+          formats: Array.isArray(
+            providerData.formats
+          )
             ? providerData.formats
             : [],
         },
@@ -202,35 +230,98 @@ export async function POST(request: Request) {
     }
 
     // =========================
-    // INSTAGRAM / TIKTOK / FACEBOOK
+    // FACEBOOK / INSTAGRAM / TIKTOK
     // =========================
+
+    /*
+      FastSaver can return media like this:
+
+      {
+        ok: true,
+        items: [
+          {
+            type: "video",
+            download_url: "https://....mp4"
+          }
+        ]
+      }
+
+      So we find the first video inside items[].
+    */
+
+    const items = Array.isArray(providerData.items)
+      ? providerData.items
+      : [];
+
+    const videoItem = items.find(
+      (item: any) =>
+        item?.type === "video" &&
+        typeof item?.download_url === "string"
+    );
+
+    // Fallback in case provider returns download_url directly.
+    const downloadUrl =
+      videoItem?.download_url ??
+      providerData.download_url ??
+      null;
+
+    const thumbnailUrl =
+      videoItem?.thumbnail_url ??
+      providerData.thumbnail_url ??
+      null;
+
+    const mediaType =
+      videoItem?.type ??
+      providerData.type ??
+      "video";
 
     return NextResponse.json({
       success: true,
       platform,
       url,
       status: "processed",
-      downloadAvailable: Boolean(
-        providerData.download_url
-      ),
 
-      message: `${platform} video processed successfully.`,
+      downloadAvailable: Boolean(downloadUrl),
+
+      message:
+        `${platform} video processed successfully.`,
 
       data: {
-        id: providerData.id ?? null,
-        type: providerData.type ?? null,
-        download_url:
-          providerData.download_url ?? null,
-        thumbnail_url:
-          providerData.thumbnail_url ?? null,
-        width: providerData.width ?? null,
-        height: providerData.height ?? null,
-        duration: providerData.duration ?? null,
-        caption: providerData.caption ?? null,
+        id:
+          providerData.id ??
+          null,
+
+        type: mediaType,
+
+        download_url: downloadUrl,
+
+        thumbnail_url: thumbnailUrl,
+
+        width:
+          videoItem?.width ??
+          providerData.width ??
+          null,
+
+        height:
+          videoItem?.height ??
+          providerData.height ??
+          null,
+
+        duration:
+          providerData.duration ??
+          videoItem?.duration ??
+          null,
+
+        caption:
+          providerData.caption ??
+          null,
       },
     });
   } catch (error) {
-    console.error("Analyze API error:", error);
+    console.error(
+      "Analyze API error:",
+      error
+    );
 
     return NextResponse.json(
       {
