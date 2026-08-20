@@ -3,47 +3,44 @@ import { NextResponse } from "next/server";
 type Platform = "TikTok" | "Instagram" | "Facebook" | "YouTube";
 
 function detectPlatform(urlString: string): Platform | null {
-  let url: URL;
-
   try {
-    url = new URL(urlString);
+    const url = new URL(urlString);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+
+    if (
+      hostname === "tiktok.com" ||
+      hostname.endsWith(".tiktok.com")
+    ) {
+      return "TikTok";
+    }
+
+    if (
+      hostname === "instagram.com" ||
+      hostname.endsWith(".instagram.com")
+    ) {
+      return "Instagram";
+    }
+
+    if (
+      hostname === "facebook.com" ||
+      hostname.endsWith(".facebook.com") ||
+      hostname === "fb.watch"
+    ) {
+      return "Facebook";
+    }
+
+    if (
+      hostname === "youtube.com" ||
+      hostname.endsWith(".youtube.com") ||
+      hostname === "youtu.be"
+    ) {
+      return "YouTube";
+    }
+
+    return null;
   } catch {
     return null;
   }
-
-  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
-
-  if (
-    hostname === "tiktok.com" ||
-    hostname.endsWith(".tiktok.com")
-  ) {
-    return "TikTok";
-  }
-
-  if (
-    hostname === "instagram.com" ||
-    hostname.endsWith(".instagram.com")
-  ) {
-    return "Instagram";
-  }
-
-  if (
-    hostname === "facebook.com" ||
-    hostname.endsWith(".facebook.com") ||
-    hostname === "fb.watch"
-  ) {
-    return "Facebook";
-  }
-
-  if (
-    hostname === "youtube.com" ||
-    hostname.endsWith(".youtube.com") ||
-    hostname === "youtu.be"
-  ) {
-    return "YouTube";
-  }
-
-  return null;
 }
 
 export async function POST(request: Request) {
@@ -117,16 +114,12 @@ export async function POST(request: Request) {
         {
           success: false,
           message:
-            "Media provider is not configured. Please add FASTSAVER_API_KEY to .env.local.",
+            "Media provider is not configured. Please add FASTSAVER_API_KEY.",
         },
         { status: 500 }
       );
     }
 
-    /*
-     * YouTube uses a different FastSaver endpoint.
-     * Instagram, TikTok and Facebook use /fetch.
-     */
     const endpoint =
       platform === "YouTube"
         ? "https://api.fastsaver.io/v1/youtube/info"
@@ -176,18 +169,19 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * YouTube response
-     */
+    // =========================
+    // YOUTUBE
+    // =========================
+
     if (platform === "YouTube") {
       return NextResponse.json({
         success: true,
         platform: "YouTube",
         url,
         status: "processed",
-        downloadAvailable: false,
-        message: "YouTube video information retrieved successfully.",
-
+        downloadAvailable: true,
+        message:
+          "YouTube video information retrieved successfully.",
         data: {
           id: providerData.video_id ?? null,
           video_id: providerData.video_id ?? null,
@@ -207,15 +201,18 @@ export async function POST(request: Request) {
       });
     }
 
-    /*
-     * Instagram / TikTok / Facebook response
-     */
+    // =========================
+    // INSTAGRAM / TIKTOK / FACEBOOK
+    // =========================
+
     return NextResponse.json({
       success: true,
       platform,
       url,
       status: "processed",
-      downloadAvailable: Boolean(providerData.download_url),
+      downloadAvailable: Boolean(
+        providerData.download_url
+      ),
 
       message: `${platform} video processed successfully.`,
 

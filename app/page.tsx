@@ -2,20 +2,52 @@
 
 import { FormEvent, useState } from "react";
 
+type YouTubeFormat = {
+  type: string;
+  format: string;
+  filesize: number;
+};
+
 type Result = {
   success: boolean;
   platform?: string;
   message: string;
   downloadAvailable?: boolean;
+
+  url?: string;
+
   data?: {
     id?: string;
+    video_id?: string;
     type?: string;
+
     download_url?: string;
     thumbnail_url?: string;
+    thumbnail?: string;
+
     width?: number;
     height?: number;
     duration?: string | number;
     caption?: string;
+
+    title?: string;
+    author?: string;
+    author_url?: string;
+
+    formats?: YouTubeFormat[];
+  };
+};
+
+type DownloadResult = {
+  success: boolean;
+  message: string;
+
+  data?: {
+    video_id?: string;
+    duration?: number;
+    filename?: string;
+    download_url?: string;
+    format?: string;
   };
 };
 
@@ -31,12 +63,55 @@ const platformInfo: Record<
   YouTube: { letter: "Y" },
 };
 
+function formatDuration(duration?: string | number) {
+  if (duration === undefined || duration === null) {
+    return null;
+  }
+
+  const seconds = Number(duration);
+
+  if (!Number.isFinite(seconds)) {
+    return String(duration);
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+
+  return `${minutes}:${remainingSeconds
+    .toString()
+    .padStart(2, "0")}`;
+}
+
+function formatFileSize(bytes?: number) {
+  if (!bytes || bytes <= 0) {
+    return "Unknown size";
+  }
+
+  const mb = bytes / (1024 * 1024);
+
+  if (mb < 1) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${mb.toFixed(2)} MB`;
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<Result | null>(null);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  const [result, setResult] =
+    useState<Result | null>(null);
+
+  const [downloadingFormat, setDownloadingFormat] =
+    useState<string | null>(null);
+
+  const [downloadResult, setDownloadResult] =
+    useState<DownloadResult | null>(null);
+
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     const cleanUrl = url.trim();
@@ -46,11 +121,13 @@ export default function Home() {
         success: false,
         message: "Please paste a video URL first.",
       });
+
       return;
     }
 
     setLoading(true);
     setResult(null);
+    setDownloadResult(null);
 
     try {
       const response = await fetch("/api/analyze", {
@@ -69,10 +146,62 @@ export default function Home() {
     } catch {
       setResult({
         success: false,
-        message: "Something went wrong. Please try again.",
+        message:
+          "Something went wrong. Please try again.",
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleYouTubeDownload(
+    format: string
+  ) {
+    if (!result?.url) {
+      return;
+    }
+
+    setDownloadingFormat(format);
+    setDownloadResult(null);
+
+    try {
+      const response = await fetch(
+        "/api/youtube-download",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: result.url,
+            format,
+          }),
+        }
+      );
+
+      const data: DownloadResult =
+        await response.json();
+
+      setDownloadResult(data);
+
+      if (
+        data.success &&
+        data.data?.download_url
+      ) {
+        window.open(
+          data.data.download_url,
+          "_blank",
+          "noopener,noreferrer"
+        );
+      }
+    } catch {
+      setDownloadResult({
+        success: false,
+        message:
+          "Unable to generate the download. Please try again.",
+      });
+    } finally {
+      setDownloadingFormat(null);
     }
   }
 
@@ -80,25 +209,56 @@ export default function Home() {
     ? platformInfo[result.platform]
     : null;
 
+  const isYouTube =
+    result?.platform === "YouTube";
+
+  const youtubeFormats =
+    result?.data?.formats ?? [];
+
+  const videoFormats =
+    youtubeFormats.filter(
+      (format) => format.type === "video"
+    );
+
+  const audioFormats =
+    youtubeFormats.filter(
+      (format) => format.type === "audio"
+    );
+
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       {/* Navbar */}
       <nav className="border-b border-white/10">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
-          <a href="/" className="text-2xl font-black">
-            Tumrani<span className="text-indigo-400">Vid</span>
+          <a
+            href="/"
+            className="text-2xl font-black"
+          >
+            Tumrani
+            <span className="text-indigo-400">
+              Vid
+            </span>
           </a>
 
           <div className="hidden gap-7 text-sm text-slate-300 md:flex">
-            <a href="#how" className="hover:text-white">
+            <a
+              href="#how"
+              className="hover:text-white"
+            >
               How it works
             </a>
 
-            <a href="#platforms" className="hover:text-white">
+            <a
+              href="#platforms"
+              className="hover:text-white"
+            >
               Platforms
             </a>
 
-            <a href="#faq" className="hover:text-white">
+            <a
+              href="#faq"
+              className="hover:text-white"
+            >
               FAQ
             </a>
           </div>
@@ -122,8 +282,8 @@ export default function Home() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-400">
-            Paste a supported public video URL and process it
-            instantly.
+            Paste a supported public video URL and
+            process it instantly.
           </p>
 
           {/* Search */}
@@ -135,7 +295,9 @@ export default function Home() {
               type="url"
               required
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) =>
+                setUrl(e.target.value)
+              }
               placeholder="Paste your video URL here..."
               className="h-16 flex-1 rounded-2xl border border-white/10 bg-white/10 px-5 text-white outline-none placeholder:text-slate-500 focus:border-indigo-400"
             />
@@ -145,14 +307,16 @@ export default function Home() {
               disabled={loading}
               className="h-16 rounded-2xl bg-indigo-500 px-8 font-bold transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? "Processing..." : "Process URL"}
+              {loading
+                ? "Processing..."
+                : "Process URL"}
             </button>
           </form>
 
           {/* Result */}
           {result && (
             <div className="mx-auto mt-8 max-w-3xl text-left">
-              {result.success && result.data?.download_url ? (
+              {result.success ? (
                 <div className="overflow-hidden rounded-3xl border border-indigo-400/20 bg-white/5">
                   {/* Header */}
                   <div className="flex items-center gap-4 border-b border-white/10 p-6">
@@ -171,52 +335,281 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Video */}
-                  <div className="p-6">
-                    <video
-                      controls
-                      playsInline
-                      poster={result.data.thumbnail_url}
-                      className="mx-auto max-h-[600px] w-full rounded-2xl bg-black"
-                      src={result.data.download_url}
-                    />
+                  {/* YouTube */}
+                  {isYouTube ? (
+                    <div className="p-6">
+                      {result.data?.thumbnail && (
+                        <img
+                          src={
+                            result.data.thumbnail
+                          }
+                          alt={
+                            result.data.title ||
+                            "YouTube video thumbnail"
+                          }
+                          className="mx-auto w-full rounded-2xl bg-black object-cover"
+                        />
+                      )}
 
-                    {/* Info */}
-                    <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="flex flex-wrap gap-4 text-sm text-slate-400">
-                        {result.data.width &&
-                          result.data.height && (
-                            <span>
-                              Resolution:{" "}
-                              {result.data.width}×
-                              {result.data.height}
-                            </span>
-                          )}
+                      {result.data?.title && (
+                        <h3 className="mt-6 text-2xl font-bold leading-8">
+                          {result.data.title}
+                        </h3>
+                      )}
 
-                        {result.data.type && (
-                          <span>
-                            Type: {result.data.type}
+                      {result.data?.author && (
+                        <p className="mt-2 text-sm text-slate-400">
+                          By {result.data.author}
+                        </p>
+                      )}
+
+                      {result.data?.duration !==
+                        undefined && (
+                        <div className="mt-5 inline-flex rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-slate-300">
+                          Duration:
+                          <span className="ml-1 font-semibold text-white">
+                            {formatDuration(
+                              result.data.duration
+                            )}
                           </span>
-                        )}
+                        </div>
+                      )}
+
+                      {/* Video qualities */}
+                      <div className="mt-8">
+                        <h3 className="text-lg font-bold">
+                          Download Video
+                        </h3>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          Choose your preferred quality.
+                        </p>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {videoFormats.map(
+                            (format, index) => {
+                              const isDownloading =
+                                downloadingFormat ===
+                                format.format;
+
+                              return (
+                                <button
+                                  key={`${format.format}-${index}`}
+                                  type="button"
+                                  disabled={
+                                    downloadingFormat !==
+                                      null
+                                  }
+                                  onClick={() =>
+                                    handleYouTubeDownload(
+                                      format.format
+                                    )
+                                  }
+                                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 p-4 text-left transition hover:border-indigo-400/50 hover:bg-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <div>
+                                    <p className="font-bold">
+                                      {format.format}
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {formatFileSize(
+                                        format.filesize
+                                      )}
+                                    </p>
+                                  </div>
+
+                                  <span className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-bold text-white">
+                                    {isDownloading
+                                      ? "Preparing..."
+                                      : "Download"}
+                                  </span>
+                                </button>
+                              );
+                            }
+                          )}
+                        </div>
                       </div>
+
+                      {/* Audio */}
+                      {audioFormats.length >
+                        0 && (
+                        <div className="mt-8">
+                          <h3 className="text-lg font-bold">
+                            Audio
+                          </h3>
+
+                          <div className="mt-4">
+                            {audioFormats.map(
+                              (format, index) => {
+                                const isDownloading =
+                                  downloadingFormat ===
+                                  "audio";
+
+                                return (
+                                  <button
+                                    key={`audio-${index}`}
+                                    type="button"
+                                    disabled={
+                                      downloadingFormat !==
+                                        null
+                                    }
+                                    onClick={() =>
+                                      handleYouTubeDownload(
+                                        "audio"
+                                      )
+                                    }
+                                    className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-black/20 p-4 text-left transition hover:border-indigo-400/50 hover:bg-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <div>
+                                      <p className="font-bold">
+                                        Audio
+                                      </p>
+
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {formatFileSize(
+                                          format.filesize
+                                        )}
+                                      </p>
+                                    </div>
+
+                                    <span className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-bold">
+                                      {isDownloading
+                                        ? "Preparing..."
+                                        : "Download"}
+                                    </span>
+                                  </button>
+                                );
+                              }
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Download status */}
+                      {downloadResult && (
+                        <div
+                          className={`mt-6 rounded-2xl border p-4 ${
+                            downloadResult.success
+                              ? "border-green-400/20 bg-green-500/5"
+                              : "border-red-400/20 bg-red-500/5"
+                          }`}
+                        >
+                          <p
+                            className={`text-sm font-semibold ${
+                              downloadResult.success
+                                ? "text-green-300"
+                                : "text-red-300"
+                            }`}
+                          >
+                            {downloadResult.message}
+                          </p>
+
+                          {downloadResult.success &&
+                            downloadResult.data
+                              ?.filename && (
+                              <p className="mt-2 text-xs text-slate-500">
+                                {
+                                  downloadResult
+                                    .data.filename
+                                }
+                              </p>
+                            )}
+                        </div>
+                      )}
                     </div>
+                  ) : (
+                    /* Instagram / TikTok / Facebook */
+                    <div className="p-6">
+                      {result.data
+                        ?.download_url ? (
+                        <>
+                          <video
+                            controls
+                            playsInline
+                            poster={
+                              result.data
+                                .thumbnail_url
+                            }
+                            className="mx-auto max-h-[600px] w-full rounded-2xl bg-black"
+                            src={
+                              result.data
+                                .download_url
+                            }
+                          />
 
-                    {/* Download */}
-                   <a
-  href={`/api/download?url=${encodeURIComponent(
-    result.data.download_url
-  )}`}
-  className="mt-5 flex h-14 w-full items-center justify-center rounded-2xl bg-indigo-500 font-bold transition hover:bg-indigo-400"
->
-  Download Video
-</a>
+                          <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <div className="flex flex-wrap gap-4 text-sm text-slate-400">
+                              {result.data.width &&
+                                result.data.height && (
+                                <span>
+                                  Resolution:{" "}
+                                  {
+                                    result.data
+                                      .width
+                                  }
+                                  ×
+                                  {
+                                    result.data
+                                      .height
+                                  }
+                                </span>
+                              )}
 
-                    {result.data.caption && (
-                      <p className="mt-5 text-sm leading-6 text-slate-400">
-                        {result.data.caption}
-                      </p>
-                    )}
-                  </div>
+                              {result.data.type && (
+                                <span>
+                                  Type:{" "}
+                                  {
+                                    result.data
+                                      .type
+                                  }
+                                </span>
+                              )}
+
+                              {result.data
+                                .duration && (
+                                <span>
+                                  Duration:{" "}
+                                  {formatDuration(
+                                    result.data
+                                      .duration
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <a
+                            href={`/api/download?url=${encodeURIComponent(
+                              result.data
+                                .download_url
+                            )}`}
+                            className="mt-5 flex h-14 w-full items-center justify-center rounded-2xl bg-indigo-500 font-bold transition hover:bg-indigo-400"
+                          >
+                            Download Video
+                          </a>
+
+                          {result.data.caption && (
+                            <p className="mt-5 text-sm leading-6 text-slate-400">
+                              {
+                                result.data
+                                  .caption
+                              }
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <div className="rounded-2xl border border-yellow-400/10 bg-yellow-500/5 p-5">
+                          <p className="text-sm text-slate-400">
+                            The video was processed,
+                            but a downloadable media
+                            URL was not returned by
+                            the provider.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-3xl border border-red-400/20 bg-red-500/5 p-6">
@@ -280,7 +673,10 @@ export default function Home() {
       </section>
 
       {/* How it works */}
-      <section id="how" className="px-5 py-24">
+      <section
+        id="how"
+        className="px-5 py-24"
+      >
         <div className="mx-auto max-w-6xl">
           <p className="text-sm font-bold uppercase tracking-widest text-indigo-400">
             How it works
@@ -292,27 +688,41 @@ export default function Home() {
 
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {[
-              ["01", "Paste URL", "Paste a public video URL."],
-              ["02", "Process", "TumraniVid processes the URL."],
-              ["03", "Download", "Preview and download the available video."],
-            ].map(([number, title, description]) => (
-              <div
-                key={number}
-                className="rounded-3xl border border-white/10 bg-white/5 p-8"
-              >
-                <span className="text-sm font-black text-indigo-400">
-                  {number}
-                </span>
+              [
+                "01",
+                "Paste URL",
+                "Paste a public video URL.",
+              ],
+              [
+                "02",
+                "Process",
+                "TumraniVid processes the URL.",
+              ],
+              [
+                "03",
+                "Download",
+                "Choose your preferred quality and download.",
+              ],
+            ].map(
+              ([number, title, description]) => (
+                <div
+                  key={number}
+                  className="rounded-3xl border border-white/10 bg-white/5 p-8"
+                >
+                  <span className="text-sm font-black text-indigo-400">
+                    {number}
+                  </span>
 
-                <h3 className="mt-5 text-2xl font-bold">
-                  {title}
-                </h3>
+                  <h3 className="mt-5 text-2xl font-bold">
+                    {title}
+                  </h3>
 
-                <p className="mt-3 leading-7 text-slate-400">
-                  {description}
-                </p>
-              </div>
-            ))}
+                  <p className="mt-3 leading-7 text-slate-400">
+                    {description}
+                  </p>
+                </div>
+              )
+            )}
           </div>
         </div>
       </section>
@@ -338,8 +748,9 @@ export default function Home() {
               </h3>
 
               <p className="mt-3 leading-7 text-slate-400">
-                TumraniVid currently recognizes TikTok, Instagram,
-                Facebook and YouTube URLs.
+                TumraniVid currently recognizes
+                TikTok, Instagram, Facebook and
+                YouTube URLs.
               </p>
             </div>
 
@@ -349,8 +760,8 @@ export default function Home() {
               </h3>
 
               <p className="mt-3 leading-7 text-slate-400">
-                No. Private, restricted or DRM-protected content
-                is not supported.
+                No. Private, restricted or
+                DRM-protected content is not supported.
               </p>
             </div>
 
@@ -360,8 +771,9 @@ export default function Home() {
               </h3>
 
               <p className="mt-3 leading-7 text-slate-400">
-                TumraniVid uses an authorized media provider to
-                retrieve available public content.
+                TumraniVid uses an authorized media
+                provider to retrieve available public
+                content.
               </p>
             </div>
           </div>
@@ -372,7 +784,10 @@ export default function Home() {
       <footer className="border-t border-white/10 px-5 py-10">
         <div className="mx-auto max-w-6xl text-center">
           <div className="text-xl font-black">
-            Tumrani<span className="text-indigo-400">Vid</span>
+            Tumrani
+            <span className="text-indigo-400">
+              Vid
+            </span>
           </div>
 
           <p className="mt-3 text-sm text-slate-500">
@@ -380,22 +795,27 @@ export default function Home() {
           </p>
 
           <div className="mt-5 flex justify-center gap-5 text-sm text-slate-500">
-            <a href="/privacy" className="hover:text-white">
+            <a
+              href="/privacy"
+              className="hover:text-white"
+            >
               Privacy
             </a>
 
-            <a href="/terms" className="hover:text-white">
+            <a
+              href="/terms"
+              className="hover:text-white"
+            >
               Terms
             </a>
           </div>
 
           <p className="mt-6 text-xs text-slate-600">
-            © 2026 TumraniVid. Use the service only for content you
-            are authorized to process.
+            © 2026 TumraniVid. Use the service only
+            for content you are authorized to process.
           </p>
         </div>
       </footer>
     </main>
   );
 }
-
