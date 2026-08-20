@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -67,8 +67,56 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="min-h-screen flex flex-col">
+        <div className="flex-1">{children}</div>
+
+        <footer className="border-t bg-gray-50">
+          <div className="mx-auto max-w-6xl px-6 py-8">
+            <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+              <p className="text-sm text-gray-600">
+                © {new Date().getFullYear()} TumraniVid. All rights reserved.
+              </p>
+
+              <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm">
+                <a
+                  href="/about"
+                  className="text-gray-600 hover:text-gray-900 hover:underline"
+                >
+                  About
+                </a>
+
+                <a
+                  href="/contact"
+                  className="text-gray-600 hover:text-gray-900 hover:underline"
+                >
+                  Contact
+                </a>
+
+                <a
+                  href="/privacy"
+                  className="text-gray-600 hover:text-gray-900 hover:underline"
+                >
+                  Privacy Policy
+                </a>
+
+                <a
+                  href="/terms"
+                  className="text-gray-600 hover:text-gray-900 hover:underline"
+                >
+                  Terms
+                </a>
+
+                <a
+                  href="/disclaimer"
+                  className="text-gray-600 hover:text-gray-900 hover:underline"
+                >
+                  Disclaimer
+                </a>
+              </nav>
+            </div>
+          </div>
+        </footer>
+      </body>
     </html>
   );
 }
-
