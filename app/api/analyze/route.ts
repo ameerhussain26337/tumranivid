@@ -13,7 +13,6 @@ function detectPlatform(urlString: string): Platform | null {
 
   const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
 
-  // TikTok
   if (
     hostname === "tiktok.com" ||
     hostname.endsWith(".tiktok.com")
@@ -21,7 +20,6 @@ function detectPlatform(urlString: string): Platform | null {
     return "TikTok";
   }
 
-  // Instagram
   if (
     hostname === "instagram.com" ||
     hostname.endsWith(".instagram.com")
@@ -29,7 +27,6 @@ function detectPlatform(urlString: string): Platform | null {
     return "Instagram";
   }
 
-  // Facebook
   if (
     hostname === "facebook.com" ||
     hostname.endsWith(".facebook.com") ||
@@ -38,7 +35,6 @@ function detectPlatform(urlString: string): Platform | null {
     return "Facebook";
   }
 
-  // YouTube
   if (
     hostname === "youtube.com" ||
     hostname.endsWith(".youtube.com") ||
@@ -55,7 +51,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const rawUrl = body?.url;
 
-    // Check URL exists
     if (typeof rawUrl !== "string" || !rawUrl.trim()) {
       return NextResponse.json(
         {
@@ -68,7 +63,6 @@ export async function POST(request: Request) {
 
     const url = rawUrl.trim();
 
-    // Maximum URL length
     if (url.length > 2048) {
       return NextResponse.json(
         {
@@ -79,7 +73,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate URL
     let parsedUrl: URL;
 
     try {
@@ -94,7 +87,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Only HTTP/HTTPS
     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       return NextResponse.json(
         {
@@ -105,7 +97,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Detect platform
     const platform = detectPlatform(url);
 
     if (!platform) {
@@ -119,7 +110,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // API Key
     const apiKey = process.env.FASTSAVER_API_KEY;
 
     if (!apiKey) {
@@ -133,11 +123,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // FastSaver API
-    const providerUrl = new URL(
-      "https://api.fastsaver.io/v1/fetch"
-    );
+    /*
+     * YouTube uses a different FastSaver endpoint.
+     * Instagram, TikTok and Facebook use /fetch.
+     */
+    const endpoint =
+      platform === "YouTube"
+        ? "https://api.fastsaver.io/v1/youtube/info"
+        : "https://api.fastsaver.io/v1/fetch";
 
+    const providerUrl = new URL(endpoint);
     providerUrl.searchParams.set("url", url);
 
     const providerResponse = await fetch(
@@ -152,7 +147,6 @@ export async function POST(request: Request) {
       }
     );
 
-    // Read provider response
     let providerData: any = null;
 
     try {
@@ -161,7 +155,6 @@ export async function POST(request: Request) {
       providerData = null;
     }
 
-    // Provider error
     if (!providerResponse.ok || !providerData?.ok) {
       console.error("FastSaver error:", providerData);
 
@@ -183,16 +176,46 @@ export async function POST(request: Request) {
       );
     }
 
-    // Success
+    /*
+     * YouTube response
+     */
+    if (platform === "YouTube") {
+      return NextResponse.json({
+        success: true,
+        platform: "YouTube",
+        url,
+        status: "processed",
+        downloadAvailable: false,
+        message: "YouTube video information retrieved successfully.",
+
+        data: {
+          id: providerData.video_id ?? null,
+          video_id: providerData.video_id ?? null,
+          title: providerData.title ?? null,
+          author: providerData.author ?? null,
+          author_url: providerData.author_url ?? null,
+          thumbnail:
+            providerData.thumbnail ??
+            providerData.thumbnails?.max ??
+            providerData.thumbnails?.low ??
+            null,
+          duration: providerData.duration ?? null,
+          formats: Array.isArray(providerData.formats)
+            ? providerData.formats
+            : [],
+        },
+      });
+    }
+
+    /*
+     * Instagram / TikTok / Facebook response
+     */
     return NextResponse.json({
       success: true,
       platform,
       url,
       status: "processed",
-
-      downloadAvailable: Boolean(
-        providerData.download_url
-      ),
+      downloadAvailable: Boolean(providerData.download_url),
 
       message: `${platform} video processed successfully.`,
 
