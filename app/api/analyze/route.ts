@@ -120,8 +120,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // YouTube uses its own information endpoint.
-    // Other supported platforms use the fetch endpoint.
     const endpoint =
       platform === "YouTube"
         ? "https://api.fastsaver.io/v1/youtube/info"
@@ -129,6 +127,12 @@ export async function POST(request: Request) {
 
     const providerUrl = new URL(endpoint);
     providerUrl.searchParams.set("url", url);
+
+    console.log("FastSaver request:", {
+      platform,
+      endpoint,
+      url,
+    });
 
     const providerResponse = await fetch(
       providerUrl.toString(),
@@ -198,12 +202,10 @@ export async function POST(request: Request) {
 
           title:
             providerData.title ??
-            providerData.name ??
             null,
 
           author:
             providerData.author ??
-            providerData.channel ??
             null,
 
           author_url:
@@ -220,11 +222,10 @@ export async function POST(request: Request) {
             providerData.duration ??
             null,
 
-          formats: Array.isArray(
-            providerData.formats
-          )
-            ? providerData.formats
-            : [],
+          formats:
+            Array.isArray(providerData.formats)
+              ? providerData.formats
+              : [],
         },
       });
     }
@@ -232,22 +233,6 @@ export async function POST(request: Request) {
     // =========================
     // FACEBOOK / INSTAGRAM / TIKTOK
     // =========================
-
-    /*
-      FastSaver can return media like this:
-
-      {
-        ok: true,
-        items: [
-          {
-            type: "video",
-            download_url: "https://....mp4"
-          }
-        ]
-      }
-
-      So we find the first video inside items[].
-    */
 
     const items = Array.isArray(providerData.items)
       ? providerData.items
@@ -259,7 +244,6 @@ export async function POST(request: Request) {
         typeof item?.download_url === "string"
     );
 
-    // Fallback in case provider returns download_url directly.
     const downloadUrl =
       videoItem?.download_url ??
       providerData.download_url ??
@@ -280,7 +264,6 @@ export async function POST(request: Request) {
       platform,
       url,
       status: "processed",
-
       downloadAvailable: Boolean(downloadUrl),
 
       message:
@@ -293,9 +276,11 @@ export async function POST(request: Request) {
 
         type: mediaType,
 
-        download_url: downloadUrl,
+        download_url:
+          downloadUrl,
 
-        thumbnail_url: thumbnailUrl,
+        thumbnail_url:
+          thumbnailUrl,
 
         width:
           videoItem?.width ??
