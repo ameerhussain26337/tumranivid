@@ -13,6 +13,7 @@ function detectPlatform(urlString: string): Platform | null {
 
   const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
 
+  // TikTok
   if (
     hostname === "tiktok.com" ||
     hostname.endsWith(".tiktok.com")
@@ -20,6 +21,7 @@ function detectPlatform(urlString: string): Platform | null {
     return "TikTok";
   }
 
+  // Instagram
   if (
     hostname === "instagram.com" ||
     hostname.endsWith(".instagram.com")
@@ -27,6 +29,7 @@ function detectPlatform(urlString: string): Platform | null {
     return "Instagram";
   }
 
+  // Facebook
   if (
     hostname === "facebook.com" ||
     hostname.endsWith(".facebook.com") ||
@@ -35,6 +38,7 @@ function detectPlatform(urlString: string): Platform | null {
     return "Facebook";
   }
 
+  // YouTube
   if (
     hostname === "youtube.com" ||
     hostname.endsWith(".youtube.com") ||
@@ -51,6 +55,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const rawUrl = body?.url;
 
+    // Check URL exists
     if (typeof rawUrl !== "string" || !rawUrl.trim()) {
       return NextResponse.json(
         {
@@ -63,6 +68,7 @@ export async function POST(request: Request) {
 
     const url = rawUrl.trim();
 
+    // Maximum URL length
     if (url.length > 2048) {
       return NextResponse.json(
         {
@@ -73,6 +79,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate URL
     let parsedUrl: URL;
 
     try {
@@ -87,6 +94,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Only HTTP/HTTPS
     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       return NextResponse.json(
         {
@@ -97,6 +105,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Detect platform
     const platform = detectPlatform(url);
 
     if (!platform) {
@@ -110,6 +119,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // API Key
     const apiKey = process.env.FASTSAVER_API_KEY;
 
     if (!apiKey) {
@@ -123,6 +133,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // FastSaver API
     const providerUrl = new URL(
       "https://api.fastsaver.io/v1/fetch"
     );
@@ -135,11 +146,13 @@ export async function POST(request: Request) {
         method: "GET",
         headers: {
           "X-Api-Key": apiKey,
+          Accept: "application/json",
         },
         cache: "no-store",
       }
     );
 
+    // Read provider response
     let providerData: any = null;
 
     try {
@@ -148,35 +161,52 @@ export async function POST(request: Request) {
       providerData = null;
     }
 
+    // Provider error
     if (!providerResponse.ok || !providerData?.ok) {
+      console.error("FastSaver error:", providerData);
+
       return NextResponse.json(
         {
           success: false,
           platform,
           message:
             providerData?.detail ||
-            "The media provider could not process this URL.",
+            providerData?.message ||
+            `Unable to process this ${platform} URL.`,
         },
-        { status: providerResponse.status || 502 }
+        {
+          status:
+            providerResponse.status >= 400
+              ? providerResponse.status
+              : 502,
+        }
       );
     }
 
+    // Success
     return NextResponse.json({
       success: true,
       platform,
       url,
       status: "processed",
-      downloadAvailable: Boolean(providerData.download_url),
+
+      downloadAvailable: Boolean(
+        providerData.download_url
+      ),
+
       message: `${platform} video processed successfully.`,
+
       data: {
-        id: providerData.id,
-        type: providerData.type,
-        download_url: providerData.download_url,
-        thumbnail_url: providerData.thumbnail_url,
-        width: providerData.width,
-        height: providerData.height,
-        duration: providerData.duration,
-        caption: providerData.caption,
+        id: providerData.id ?? null,
+        type: providerData.type ?? null,
+        download_url:
+          providerData.download_url ?? null,
+        thumbnail_url:
+          providerData.thumbnail_url ?? null,
+        width: providerData.width ?? null,
+        height: providerData.height ?? null,
+        duration: providerData.duration ?? null,
+        caption: providerData.caption ?? null,
       },
     });
   } catch (error) {
